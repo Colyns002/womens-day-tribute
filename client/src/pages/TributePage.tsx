@@ -29,6 +29,25 @@ export default function TributePage({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [decoratedImage, setDecoratedImage] = useState<string | null>(null);
   const [isDecorating, setIsDecorating] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const [meta, base64] = dataUrl.split(",");
+    if (!meta || !base64) {
+      throw new Error("Invalid data URL format");
+    }
+
+    const mimeMatch = meta.match(/data:(.*?);base64/);
+    const mime = mimeMatch?.[1] || "image/png";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    return new Blob([bytes], { type: mime });
+  };
 
   // Decorate the image when component mounts or message changes
   useEffect(() => {
@@ -53,31 +72,43 @@ export default function TributePage({
       toast.error("Image not ready yet");
       return;
     }
+    if (isDownloading) return;
+
+    setIsDownloading(true);
+    const startedAt = performance.now();
 
     try {
       // Save to gallery before download attempt
       if (onSaveToGallery) {
-        onSaveToGallery(decoratedImage);
+        try {
+          onSaveToGallery(decoratedImage);
+        } catch (galleryError) {
+          console.warn("Save to gallery failed:", galleryError);
+        }
       }
 
-      const response = await fetch(decoratedImage);
-      const blob = await response.blob();
+      const blob = dataUrlToBlob(decoratedImage);
       const objectUrl = URL.createObjectURL(blob);
 
       const link = document.createElement("a");
       link.href = objectUrl;
       link.download = `womens-day-tribute-${Date.now()}.png`;
+      link.rel = "noopener";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
       // Delay revoke to avoid race conditions in some browsers
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      const totalMs = performance.now() - startedAt;
+      console.info(`Download latency: ${totalMs.toFixed(1)}ms`);
       toast.success("Image downloaded and saved to gallery!");
     } catch (error) {
       console.error("Download error:", error);
       window.open(decoratedImage, "_blank", "noopener,noreferrer");
       toast.error("Direct download failed. Opened image in new tab.");
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -163,11 +194,11 @@ export default function TributePage({
             <div className="flex gap-3 mt-6 animate-slide-in-up">
               <Button
                 onClick={handleDownload}
-                disabled={isDecorating || !decoratedImage}
+                disabled={isDecorating || !decoratedImage || isDownloading}
                 className="flex-1 bg-[#9B6B9E] hover:bg-[#8B5B8E] text-white py-6 rounded-xl font-semibold transition-all hover:scale-105 active:scale-95"
               >
                 <Download className="mr-2 h-4 w-4" />
-                Download
+                {isDownloading ? "Downloading..." : "Download"}
               </Button>
               <Button
                 onClick={handleShare}
