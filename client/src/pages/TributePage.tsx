@@ -29,7 +29,6 @@ export default function TributePage({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [decoratedImage, setDecoratedImage] = useState<string | null>(null);
   const [isDecorating, setIsDecorating] = useState(true);
-  const [showPreview, setShowPreview] = useState(false);
 
   // Decorate the image when component mounts or message changes
   useEffect(() => {
@@ -38,7 +37,6 @@ export default function TributePage({
       try {
         const decorated = await decorateImage(image, message);
         setDecoratedImage(decorated);
-        setShowPreview(true);
       } catch (error) {
         console.error("Decoration error:", error);
         toast.error("Failed to decorate image");
@@ -50,24 +48,37 @@ export default function TributePage({
     decorateAsync();
   }, [image, message]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!decoratedImage) {
       toast.error("Image not ready yet");
       return;
     }
 
-    // Save to gallery
-    if (onSaveToGallery) {
-      onSaveToGallery(decoratedImage);
-    }
+    try {
+      // Save to gallery before download attempt
+      if (onSaveToGallery) {
+        onSaveToGallery(decoratedImage);
+      }
 
-    const link = document.createElement("a");
-    link.href = decoratedImage;
-    link.download = `mothers-day-tribute-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Image downloaded and saved to gallery!");
+      const response = await fetch(decoratedImage);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `womens-day-tribute-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Delay revoke to avoid race conditions in some browsers
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      toast.success("Image downloaded and saved to gallery!");
+    } catch (error) {
+      console.error("Download error:", error);
+      window.open(decoratedImage, "_blank", "noopener,noreferrer");
+      toast.error("Direct download failed. Opened image in new tab.");
+    }
   };
 
   const handleShare = async () => {
